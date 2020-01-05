@@ -1,264 +1,198 @@
-#! /usr/bin/env python3
+#------------------------------------------------------------
+# SEGMENT, RECOGNIZE and COUNT fingers from a video sequence
+#------------------------------------------------------------
 
-import copy
+# organize imports
 import cv2
+import imutils
 import numpy as np
-from keras.models import load_model
-import time
+from sklearn.metrics import pairwise
 
-# General Settings
-prediction = ''
-action = ''
-score = 0
-img_counter = 500
+# global variables
+bg = None
 
-class Volume(object):
-    def __init__(self):
-        self.level = .5
+#--------------------------------------------------
+# To find the running average over the background
+#--------------------------------------------------
+def run_avg(image, accumWeight):
+    global bg
+    # initialize the background
+    if bg is None:
+        bg = image.copy().astype("float")
+        return
 
-    def increase(self, amount):
-        self.level += amount
-        print('New level is: {self.level}')
+    # compute weighted average, accumulate it and update the background
+    cv2.accumulateWeighted(image, bg, accumWeight)
 
-    def decrease(self, amount):
-        self.level -= amount
-        print('New level is: {self.level}')
+#---------------------------------------------
+# To segment the region of hand in the image
+#---------------------------------------------
+def segment(image, threshold=25):
+    global bg
+    # find the absolute difference between background and current frame
+    diff = cv2.absdiff(bg.astype("uint8"), image)
 
+    # threshold the diff image so that we get the foreground
+    thresholded = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)[1]
 
-vol = Volume()
+    # get the contours in the thresholded image
+    (cnts, _) = cv2.findContours(thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-# Turn on/off the ability to save images
-save_images, selected_gesture = False, 'peace'
+    # return None, if no contours detected
+    if len(cnts) == 0:
+        return
+    else:
+        # based on contour area, get the maximum contour which is the hand
+        segmented = max(cnts, key=cv2.contourArea)
+        return (thresholded, segmented)
 
-gesture_names = {0: 'Fist',
-                 1: 'L',
-                 2: 'Okay',
-                 3: 'Palm',
-                 4: 'Peace'}
+#--------------------------------------------------------------
+# To count the number of fingers in the segmented hand region
+#--------------------------------------------------------------
+def count(thresholded, segmented):
+    # find the convex hull of the segmented hand region
+    chull = cv2.convexHull(segmented)
 
-model = load_model('/Users/brenner/project_kojak/models/VGG_cross_validated.h5')
+    # find the most extreme points in the convex hull
+    extreme_top    = tuple(chull[chull[:, :, 1].argmin()][0])
+    extreme_bottom = tuple(chull[chull[:, :, 1].argmax()][0])
+    extreme_left   = tuple(chull[chull[:, :, 0].argmin()][0])
+    extreme_right  = tuple(chull[chull[:, :, 0].argmax()][0])
 
+    # find the center of the palm
+    cX = int((extreme_left[0] + extreme_right[0]) / 2)
+    cY = int((extreme_top[1] + extreme_bottom[1]) / 2)
 
-def predict_rgb_image(img):
-    result = gesture_names[model.predict_classes(img)[0]]
-    print(result)
-    return (result)
+    # find the maximum euclidean distance between the center of the palm
+    # and the most extreme points of the convex hull
+    distance = pairwise.euclidean_distances([(cX, cY)], Y=[extreme_left, extreme_right, extreme_top, extreme_bottom])[0]
+    maximum_distance = distance[distance.argmax()]
 
+    # calculate the radius of the circle with 80% of the max euclidean distance obtained
+    radius = int(0.8 * maximum_distance)
 
-def predict_rgb_image_vgg(image):
-    image = np.array(image, dtype='float32')
-    image /= 255
-    pred_array = model.predict(image)
-    print('pred_array: {pred_array}')
-    result = gesture_names[np.argmax(pred_array)]
-    print('Result: {result}')
-    print(max(pred_array[0]))
-    score = float("%0.2f" % (max(pred_array[0]) * 100))
-    print(result)
-    return result, score
+    # find the circumference of the circle
+    circumference = (2 * np.pi * radius)
 
+    # take out the circular region of interest which has 
+    # the palm and the fingers
+    circular_roi = np.zeros(thresholded.shape[:2], dtype="uint8")
 
-# parameters
-cap_region_x_begin = 0.5  # start point/total width
-cap_region_y_end = 0.8  # start point/total width
-threshold = 60  # binary threshold
-blurValue = 41  # GaussianBlur parameter
-bgSubThreshold = 50
-learningRate = 0
+    # draw the circular ROI
+    cv2.circle(circular_roi, (cX, cY), radius, 255, 1)
 
-# variableslt
-isBgCaptured = 0  # bool, whether the background captured
-triggerSwitch = False  # if true, keyboard simulator works
+    # take bit-wise AND between thresholded hand using the circular ROI as the mask
+    # which gives the cuts obtained using mask on the thresholded hand image
+    circular_roi = cv2.bitwise_and(thresholded, thresholded, mask=circular_roi)
 
+    # compute the contours in the circular ROI
+    (cnts, _) = cv2.findContours(circular_roi.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-def remove_background(frame):
-    fgmask = bgModel.apply(frame, learningRate=learningRate)
-    kernel = np.ones((3, 3), np.uint8)
-    fgmask = cv2.erode(fgmask, kernel, iterations=1)
-    res = cv2.bitwise_and(frame, frame, mask=fgmask)
-    return res
+    # initalize the finger count
+    count = 0
 
+    # loop through the contours found
+    for c in cnts:
+        # compute the bounding box of the contour
+        (x, y, w, h) = cv2.boundingRect(c)
 
-# Camera
-camera = cv2.VideoCapture(0)
-camera.set(10, 200)
+        # increment the count of fingers only if -
+        # 1. The contour region is not the wrist (bottom area)
+        # 2. The number of points along the contour does not exceed
+        #     25% of the circumference of the circular ROI
+        if ((cY + (cY * 0.25)) > (y + h)) and ((circumference * 0.25) > c.shape[0]):
+            count += 1
 
-while camera.isOpened():
-    ret, frame = camera.read()
-    frame = cv2.bilateralFilter(frame, 5, 50, 100)  # smoothing filter
-    frame = cv2.flip(frame, 1)  # flip the frame horizontally
-    cv2.rectangle(frame, (int(cap_region_x_begin * frame.shape[1]), 0),
-                  (frame.shape[1], int(cap_region_y_end * frame.shape[0])), (255, 0, 0), 2)
+    return count
 
-    cv2.imshow('original', frame)
+#-----------------
+# MAIN FUNCTION
+#-----------------
+if __name__ == "__main__":
+    # initialize accumulated weight
+    accumWeight = 0.5
 
-    # Run once background is captured
-    if isBgCaptured == 1:
-        img = remove_background(frame)
-        img = img[0:int(cap_region_y_end * frame.shape[0]),
-              int(cap_region_x_begin * frame.shape[1]):frame.shape[1]]  # clip the ROI
-        # cv2.imshow('mask', img)
+    # get the reference to the webcam
+    camera = cv2.VideoCapture(0)
 
-        # convert the image into binary image
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (blurValue, blurValue), 0)
-        # cv2.imshow('blur', blur)
-        ret, thresh = cv2.threshold(blur, threshold, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        # Add prediction and action text to thresholded image
-        # cv2.putText(thresh, f"Prediction: {prediction} ({score}%)", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255))
-        # cv2.putText(thresh, f"Action: {action}", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255))  # Draw the text
-        # Draw the text
-        cv2.putText(thresh, "Prediction: {prediction} ({score}%)", (50, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
-                    (255, 255, 255))
-        cv2.putText(thresh, "Action: {action}", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1,
-                    (255, 255, 255))  # Draw the text
-        cv2.imshow('ori', thresh)
+    # region of interest (ROI) coordinates
+    top, right, bottom, left = 10, 350, 225, 590
 
-        # get the contours
-        thresh1 = copy.deepcopy(thresh)
-        _, contours, hierarchy = cv2.findContours(thresh1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        length = len(contours)
-        maxArea = -1
-        if length > 0:
-            for i in range(length):  # find the biggest contour (according to area)
-                temp = contours[i]
-                area = cv2.contourArea(temp)
-                if area > maxArea:
-                    maxArea = area
-                    ci = i
+    # initialize num of frames
+    num_frames = 0
 
-            res = contours[ci]
-            hull = cv2.convexHull(res)
-            drawing = np.zeros(img.shape, np.uint8)
-            cv2.drawContours(drawing, [res], 0, (0, 255, 0), 2)
-            cv2.drawContours(drawing, [hull], 0, (0, 0, 255), 3)
+    # calibration indicator
+    calibrated = False
 
-        cv2.imshow('output', drawing)
+    # keep looping, until interrupted
+    while(True):
+        # get the current frame
+        (grabbed, frame) = camera.read()
 
-    # Keyboard OP
-    k = cv2.waitKey(10)
-    if k == 27:  # press ESC to exit all windows at any time
-        break
-    elif k == ord('b'):  # press 'b' to capture the background
-        bgModel = cv2.createBackgroundSubtractorMOG2(0, bgSubThreshold)
-        time.sleep(2)
-        isBgCaptured = 1
-        print('Background captured')
+        # resize the frame
+        frame = imutils.resize(frame, width=700)
 
-    elif k == ord('r'):  # press 'r' to reset the background
-        time.sleep(1)
-        bgModel = None
-        triggerSwitch = False
-        isBgCaptured = 0
-        print('Reset background')
-    elif k == 32:
-        # If space bar pressed
-        cv2.imshow('original', frame)
-        # copies 1 channel BW image to all 3 RGB channels
-        target = np.stack((thresh,) * 3, axis=-1)
-        target = cv2.resize(target, (224, 224))
-        target = target.reshape(1, 224, 224, 3)
-        prediction, score = predict_rgb_image_vgg(target)
+        # flip the frame so that it is not the mirror view
+        frame = cv2.flip(frame, 1)
 
-        if gesture:
-            if prediction == 'Palm':
-                try:
-                    action = "Lights on, music on"
-                except ConnectionError:
-                    gesture = False
-                    pass
+        # clone the frame
+        clone = frame.copy()
 
-            elif prediction == 'Fist':
-                try:
-                    action = 'Fist Gesture'
-                except ConnectionError:
-                    gesture = False
-                    pass
+        # get the height and width of the frame
+        (height, width) = frame.shape[:2]
 
-            elif prediction == 'L':
-                try:
-                    action = 'L Gesture'
-                except ConnectionError:
-                    gesture = False
-                    pass
+        # get the ROI
+        roi = frame[top:bottom, right:left]
 
-            elif prediction == 'Okay':
-                try:
-                    action = 'Okay Gesture'
-                except ConnectionError:
-                    gesture = False
-                    pass
+        # convert the roi to grayscale and blur it
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (7, 7), 0)
 
-            elif prediction == 'Peace':
-                try:
-                    action = 'Peace Gesture'
-                except ConnectionError:
-                    gesture = False
-                    pass
+        # to get the background, keep looking till a threshold is reached
+        # so that our weighted average model gets calibrated
+        if num_frames < 30:
+            run_avg(gray, accumWeight)
+            if num_frames == 1:
+                print("[STATUS] please wait! calibrating...")
+            elif num_frames == 29:
+                print("[STATUS] calibration successfull...")
+        else:
+            # segment the hand region
+            hand = segment(gray)
 
-            else:
-                pass
+            # check whether hand region is segmented
+            if hand is not None:
+                # if yes, unpack the thresholded image and
+                # segmented region
+                (thresholded, segmented) = hand
 
-        if save_images:
-            img_name = "./frames/drawings/drawing_{selected_gesture}_{img_counter}.jpg".format(
-                img_counter)
-            cv2.imwrite(img_name, drawing)
-            print("{} written".format(img_name))
+                # draw the segmented region and display the frame
+                cv2.drawContours(clone, [segmented + (right, top)], -1, (0, 0, 255))
 
-            img_name2 = "./frames/silhouettes/{selected_gesture}_{img_counter}.jpg".format(
-                img_counter)
-            cv2.imwrite(img_name2, thresh)
-            print("{} written".format(img_name2))
+                # count the number of fingers
+                fingers = count(thresholded, segmented)
 
-            img_name3 = "./frames/masks/mask_{selected_gesture}_{img_counter}.jpg".format(
-                img_counter)
-            cv2.imwrite(img_name3, img)
-            print("{} written".format(img_name3))
+                cv2.putText(clone, str(fingers), (70, 45), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
-            img_counter += 1
+                # show the thresholded image
+                cv2.imshow("Thesholded", thresholded)
 
-    elif k == ord('t'):
+        # draw the segmented hand
+        cv2.rectangle(clone, (left, top), (right, bottom), (0,255,0), 2)
 
-        print('Tracker turned on.')
+        # increment the number of frames
+        num_frames += 1
 
-        cap = cv2.VideoCapture(0)
-        ret, frame = cap.read()
+        # display the frame with segmented hand
+        cv2.imshow("Video Feed", clone)
 
-        # Select Region of Interest (ROI)
-        r = cv2.selectROI(frame)
+        # observe the keypress by the user
+        keypress = cv2.waitKey(1) & 0xFF
 
-        # Crop image
-        imCrop = frame[int(r[1]):int(r[1] + r[3]), int(r[0]):int(r[0] + r[2])]
+        # if the user pressed "q", then stop looping
+        if keypress == ord("q"):
+            break
 
-        # setup initial location of window
-        r, h, c, w = 250, 400, 400, 400
-        track_window = (c, r, w, h)
-        # set up the ROI for tracking
-        roi = imCrop
-        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv_roi, np.array((0., 60., 32.)), np.array((180., 255., 255.)))
-        roi_hist = cv2.calcHist([hsv_roi], [0], mask, [180], [0, 180])
-        cv2.normalize(roi_hist, roi_hist, 0, 255, cv2.NORM_MINMAX)
-        # Setup the termination criteria, either 10 iteration or move by at least 1 pt
-        term_crit = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1)
-        while (1):
-            ret, frame = cap.read()
-            if ret == True:
-                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                dst = cv2.calcBackProject([hsv], [0], roi_hist, [0, 180], 1)
-                # apply meanshift to get the new location
-                ret, track_window = cv2.CamShift(dst, track_window, term_crit)
-                # Draw it on image
-                pts = cv2.boxPoints(ret)
-                pts = np.int0(pts)
-                img2 = cv2.polylines(frame, [pts], True, (0, 255, 0), 2)
-                cv2.imshow('img2', img2)
-                k = cv2.waitKey(60) & 0xff
-                if k == 27:  # if ESC key
-                    break
-                else:
-                    cv2.imwrite(chr(k) + ".jpg", img2)
-            else:
-                break
-        cv2.destroyAllWindows()
-        cap.release()
+# free up memory
+camera.release()
+cv2.destroyAllWindows()

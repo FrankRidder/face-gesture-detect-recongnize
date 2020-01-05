@@ -146,3 +146,6 @@ face_recognizer = cv2.face.EigenFaceRecognizer_create()
 face_recognizer.train(faces, np.array(labels))
 
 
+save_loc = "training-data/recognizer.xml"
+print("Training succesful, saving to %s" % save_loc)
+face_recognizer.save(save_loc)

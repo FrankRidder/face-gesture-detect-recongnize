@@ -3,6 +3,12 @@ import cv2
 import os
 import numpy as np
 
+# there is no label 0 in our training data so subject name for index/label 0 is empty
+subjects = ["", "Frank Ridder", "Liza de Graaf", "Vincent Kenbeek"]
+
+face_recognizer = cv2.face.EigenFaceRecognizer_create()
+face_recognizer.read("training-data/recognizer.xml")
+
 # function to detect face using OpenCV
 def detect_face(img):
     # convert the test image to gray image as opencv face detector expects gray images

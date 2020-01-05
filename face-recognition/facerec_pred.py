@@ -7,7 +7,7 @@ import numpy as np
 subjects = ["", "Frank Ridder", "Liza de Graaf", "Vincent Kenbeek"]
 
 face_recognizer = cv2.face.EigenFaceRecognizer_create()
-face_recognizer.read("training-data/recognizer.xml")
+face_recognizer.read("../training-data/recognizer.xml")
 
 # function to detect face using OpenCV
 def detect_face(img):
@@ -16,7 +16,7 @@ def detect_face(img):
 
     # load OpenCV face detector, I am using LBP which is fast
     # there is also a more accurate but slow Haar classifier
-    face_cascade = cv2.CascadeClassifier('opencv-test-data/haarcascade_frontalface_alt.xml')
+    face_cascade = cv2.CascadeClassifier('../opencv-files/haarcascade_frontalface_alt.xml')
 
     # let's detect multiscale (some images may be closer to camera than others) images
     # result is a list of faces

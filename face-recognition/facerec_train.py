@@ -11,16 +11,16 @@ import numpy as np
 
 # ```
 # training-data
-# |-------------- s1
+# |-------------- s1 map name
 # |               |-- 1.jpg
 # |               |-- ...
 # |               |-- 12.jpg
-# |-------------- s2
+# |-------------- s2 map name
 # |               |-- 1.jpg
 # |               |-- ...
 # |               |-- 12.jpg
 # ```
-#
+# Use rename.sh to rename pictures in the folder
 # **Note:** As we have not assigned `label 0` to any person so **the mapping for label 0 is empty**.
 
 # there is no label 0 in our training data so subject name for index/label 0 is empty
@@ -36,7 +36,7 @@ def detect_face(img):
 
     # load OpenCV face detector, I am using LBP which is fast
     # there is also a more accurate but slow Haar classifier
-    face_cascade = cv2.CascadeClassifier('opencv-test-data/haarcascade_frontalface_alt.xml')
+    face_cascade = cv2.CascadeClassifier('../opencv-files/haarcascade_frontalface_alt.xml')
 
     # let's detect multiscale (some images may be closer to camera than others) images
     # result is a list of faces
@@ -146,6 +146,6 @@ face_recognizer = cv2.face.EigenFaceRecognizer_create()
 face_recognizer.train(faces, np.array(labels))
 
 
-save_loc = "training-data/recognizer.xml"
+save_loc = "../training-data/recognizer.xml"
 print("Training succesful, saving to %s" % save_loc)
 face_recognizer.save(save_loc)

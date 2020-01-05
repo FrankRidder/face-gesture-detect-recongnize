@@ -16,7 +16,7 @@ def detect_face(img):
 
     # load OpenCV face detector, I am using LBP which is fast
     # there is also a more accurate but slow Haar classifier
-    face_cascade = cv2.CascadeClassifier('opencv-files/haarcascade_frontalface_alt.xml')
+    face_cascade = cv2.CascadeClassifier('opencv-test-data/haarcascade_frontalface_alt.xml')
 
     # let's detect multiscale (some images may be closer to camera than others) images
     # result is a list of faces
@@ -78,10 +78,10 @@ def predict(test_img):
 print("Predicting images...")
 
 # load test images
-test_img1 = cv2.imread("files/20200103_105717.jpg")
+test_img1 = cv2.imread("../test-data/20200103_105717.jpg")
 test_img1 = cv2.resize(test_img1, None, fx=0.3, fy=0.3, interpolation=cv2.INTER_LINEAR)
 
-test_img2 = cv2.imread("files/IMG_20200104_152836.jpg")
+test_img2 = cv2.imread("../test-data/IMG_20200104_152836.jpg")
 test_img2 = cv2.resize(test_img2, None, fx=0.3, fy=0.3, interpolation=cv2.INTER_LINEAR)
 
 # perform a prediction

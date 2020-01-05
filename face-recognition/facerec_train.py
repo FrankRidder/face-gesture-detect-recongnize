@@ -36,7 +36,7 @@ def detect_face(img):
 
     # load OpenCV face detector, I am using LBP which is fast
     # there is also a more accurate but slow Haar classifier
-    face_cascade = cv2.CascadeClassifier('opencv-files/haarcascade_frontalface_alt.xml')
+    face_cascade = cv2.CascadeClassifier('opencv-test-data/haarcascade_frontalface_alt.xml')
 
     # let's detect multiscale (some images may be closer to camera than others) images
     # result is a list of faces
@@ -90,7 +90,7 @@ def prepare_training_data(data_folder_path):
         # detect face and add face to list of faces
         for image_name in subject_images_names:
 
-            # ignore system files like .DS_Store
+            # ignore system test-data like .DS_Store
             if image_name.startswith("."):
                 continue
 
@@ -129,7 +129,7 @@ def prepare_training_data(data_folder_path):
 
 
 print("Preparing data...")
-faces, labels = prepare_training_data("training-data")
+faces, labels = prepare_training_data("../training-data")
 print("Data prepared")
 
 # print total faces and labels

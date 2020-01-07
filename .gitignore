@@ -3,6 +3,8 @@
 
 *.jpg
 
-venv/lib/python3.6/site-packages/cv2/.libs/
-
 venv/
+
+*.png
+
+*.jpeg

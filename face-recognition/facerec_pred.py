@@ -4,10 +4,12 @@ import os
 import numpy as np
 
 # there is no label 0 in our training data so subject name for index/label 0 is empty
-subjects = ["", "Frank Ridder", "Liza de Graaf", "Vincent Kenbeek"]
+subjects = ["", "Frank Ridder", "Liza de Graaf", "Vincent Kenbeek", "Robin Vonk", "Jurriaan Mulder", "Martijn Bakker",
+            "Bo Sterenborg", "Robin de Jong", "Marijn Stam", "Michel Rummens"]
 
 face_recognizer = cv2.face.EigenFaceRecognizer_create()
 face_recognizer.read("../training-data/recognizer.xml")
+
 
 # function to detect face using OpenCV
 def detect_face(img):
@@ -20,7 +22,7 @@ def detect_face(img):
 
     # let's detect multiscale (some images may be closer to camera than others) images
     # result is a list of faces
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5);
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5)
 
     # if no faces are detected then return original img
     if (len(faces) == 0):
@@ -78,6 +80,7 @@ def predict(test_img):
 print("Predicting images...")
 
 # load test images
+
 test_img1 = cv2.imread("../test-data/20200103_105717.jpg")
 test_img1 = cv2.resize(test_img1, None, fx=0.3, fy=0.3, interpolation=cv2.INTER_LINEAR)
 

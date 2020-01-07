@@ -24,7 +24,8 @@ import numpy as np
 # **Note:** As we have not assigned `label 0` to any person so **the mapping for label 0 is empty**.
 
 # there is no label 0 in our training data so subject name for index/label 0 is empty
-subjects = ["", "Frank Ridder", "Liza de Graaf", "Vincent Kenbeek"]
+subjects = ["", "Frank Ridder", "Liza de Graaf", "Vincent Kenbeek", "Robin Vonk", "Jurriaan Mulder", "Martijn Bakker",
+            "Bo Sterenborg", "Robin de Jong", "Marijn Stam", "Michel Rummens"]
 
 
 # ### Prepare training data
